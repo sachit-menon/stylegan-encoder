@@ -11,6 +11,19 @@ from encoder.generator_model import Generator
 from encoder.perceptual_model import PerceptualModel
 from encoder.nonperceptual_model import NonperceptualModel
 
+from pathlib import Path
+from datetime import datetime
+import glob
+
+file_path = Path().resolve()
+print("Current Path: " + str(file_path))
+
+last_edit,last_file = max([(os.stat(filename).st_mtime,filename) for filename in Path().glob('**/*.py')])
+last_edit = datetime.fromtimestamp(last_edit)
+current_time = datetime.now()
+diff_time = current_time-last_edit
+print("Last python file (" + str(last_file) + ") was modified " + str(diff_time.total_seconds())+" seconds ago")
+
 URL_FFHQ = 'https://drive.google.com/uc?id=1MEGjdvVpUsu1jB4zrXZN7Y4kBBOzizDQ'  # karras2019stylegan-ffhq-1024x1024.pkl
 
 
@@ -31,7 +44,7 @@ def main():
     # Perceptual model params
     parser.add_argument('--image_size', default=256, help='Size of images for perceptual model', type=int)
     parser.add_argument('--lr', default=1., help='Learning rate for perceptual model', type=float)
-    parser.add_argument('--iterations', default=1000, help='Number of optimization steps for each batch', type=int)
+    parser.add_argument('--iterations', default=2000, help='Number of optimization steps for each batch', type=int)
 
     # Generator params
     parser.add_argument('--randomize_noise', default=False, help='Add noise to dlatents during optimization', type=bool)
@@ -68,17 +81,31 @@ def main():
         # op = nonperceptual_model.optimize(generator.dlatent_variable, iterations=args.iterations, learning_rate=args.lr)
         
         pbar = tqdm(op, leave=False, total=args.iterations)
-        for loss in pbar:
-            pbar.set_description(' '.join(names)+' Loss: %.2f' % loss)
+        min_loss = np.inf
+        for i,l1_loss,per_loss,reg_loss, loss in pbar:
+            # Generate images from found dlatents and save them
+            if(loss < min_loss and i>0.4*args.iterations):
+                min_loss = loss
+
+                generated_images = generator.generate_images()
+                generated_dlatents = generator.get_dlatents()
+                for img_array, dlatent, img_name in zip(generated_images, generated_dlatents, names):
+                    img = PIL.Image.fromarray(img_array, 'RGB')
+                    img.save(os.path.join(args.generated_images_dir, f'{img_name}.png'), 'PNG')
+                    np.save(os.path.join(args.dlatent_dir, f'{img_name}.npy'), dlatent)
+
+                print('\n'+' '.join(names)+' L2/Per/Reg/Total Loss: [{0:.3f},{1:.3f},{2:.3f},{3:.3f}]'.format(l1_loss,per_loss,reg_loss,loss)+'<-- BEST')
+            else:
+                print('\n'+' '.join(names)+' L2/Per/Reg/Total Loss: [{0:.3f},{1:.3f},{2:.3f},{3:.3f}]'.format(l1_loss,per_loss,reg_loss,loss))
         print(' '.join(names), ' loss:', loss)
 
-        # Generate images from found dlatents and save them
-        generated_images = generator.generate_images()
-        generated_dlatents = generator.get_dlatents()
-        for img_array, dlatent, img_name in zip(generated_images, generated_dlatents, names):
-            img = PIL.Image.fromarray(img_array, 'RGB')
-            img.save(os.path.join(args.generated_images_dir, f'{img_name}.png'), 'PNG')
-            np.save(os.path.join(args.dlatent_dir, f'{img_name}.npy'), dlatent)
+        # # Generate images from found dlatents and save them
+        # generated_images = generator.generate_images()
+        # generated_dlatents = generator.get_dlatents()
+        # for img_array, dlatent, img_name in zip(generated_images, generated_dlatents, names):
+        #     img = PIL.Image.fromarray(img_array, 'RGB')
+        #     img.save(os.path.join(args.generated_images_dir, f'{img_name}.png'), 'PNG')
+        #     np.save(os.path.join(args.dlatent_dir, f'{img_name}.npy'), dlatent)
 
         generator.reset_dlatents()
 
