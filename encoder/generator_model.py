@@ -19,7 +19,9 @@ class Generator:
     def __init__(self, model, batch_size, randomize_noise=False):
         self.batch_size = batch_size
 
-        self.initial_dlatents = np.zeros((self.batch_size, 18, 512))
+        gauss_mean, _ = np.load("gaussian_fit.npy");
+        # self.initial_dlatents = np.zeros((self.batch_size, 18, 512))
+        self.initial_dlatents = np.tile(gauss_mean,(self.batch_size,18,1))
         model.components.synthesis.run(self.initial_dlatents,
                                        randomize_noise=randomize_noise, minibatch_size=self.batch_size,
                                        custom_inputs=[partial(create_variable_for_generator, batch_size=batch_size),

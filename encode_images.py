@@ -82,7 +82,8 @@ def main():
         
         pbar = tqdm(op, leave=False, total=args.iterations)
         min_loss = np.inf
-        for i,l1_loss,per_loss,reg_loss, loss in pbar:
+        img = None
+        for i,per_loss,reg_loss, loss in pbar:
             # Generate images from found dlatents and save them
             if(loss < min_loss and i>0.4*args.iterations):
                 min_loss = loss
@@ -91,13 +92,17 @@ def main():
                 generated_dlatents = generator.get_dlatents()
                 for img_array, dlatent, img_name in zip(generated_images, generated_dlatents, names):
                     img = PIL.Image.fromarray(img_array, 'RGB')
-                    img.save(os.path.join(args.generated_images_dir, f'{img_name}.png'), 'PNG')
-                    np.save(os.path.join(args.dlatent_dir, f'{img_name}.npy'), dlatent)
 
-                print('\n'+' '.join(names)+' L2/Per/Reg/Total Loss: [{0:.3f},{1:.3f},{2:.3f},{3:.3f}]'.format(l1_loss,per_loss,reg_loss,loss)+'<-- BEST')
+                print('\n'+' '.join(names)+' Per/Reg/Total Loss: [{0:.2f},{1:.2f},{2:.2f}]'.format(per_loss,reg_loss,loss)+'<-- BEST')
             else:
-                print('\n'+' '.join(names)+' L2/Per/Reg/Total Loss: [{0:.3f},{1:.3f},{2:.3f},{3:.3f}]'.format(l1_loss,per_loss,reg_loss,loss))
+                print('\n'+' '.join(names)+' Per/Reg/Total Loss: [{0:.2f},{1:.2f},{2:.2f}]'.format(per_loss,reg_loss,loss))
+
+            if(i%100 == 0 and img is not None):
+                img.save(os.path.join(args.generated_images_dir, f'{img_name}.png'), 'PNG')
+                np.save(os.path.join(args.dlatent_dir, f'{img_name}.npy'), dlatent)
         print(' '.join(names), ' loss:', loss)
+        img.save(os.path.join(args.generated_images_dir, f'{img_name}.png'), 'PNG')
+        np.save(os.path.join(args.dlatent_dir, f'{img_name}.npy'), dlatent)
 
         # # Generate images from found dlatents and save them
         # generated_images = generator.generate_images()

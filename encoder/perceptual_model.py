@@ -92,7 +92,7 @@ class PerceptualModel:
 
 
 
-        self.nonperceptual_loss = 20*tf.reduce_mean(tf.square(self.ref_img/255. - generated_image/255.))
+        self.nonperceptual_loss = 20.0*tf.reduce_mean(tf.abs(self.ref_img/255. - generated_image/255.))
 
     def set_reference_images(self, images_list):
         assert(len(images_list) != 0 and len(images_list) <= self.batch_size)
@@ -143,24 +143,26 @@ class PerceptualModel:
 
         self.reg_loss = tf.reduce_sum(tf.square(corrected_latent-self.gauss_mean)/self.gauss_scale)/512.0
 
-        lambda_per = 0
-        lambda_nonper = 0.2
-        lambda_reg = 0
+        lambda_per = 1
+        lambda_nonper = 0
+        lambda_reg = 0.5
 
         self.loss = lambda_nonper*self.nonperceptual_loss + lambda_per*self.perceptual_loss + lambda_reg*self.reg_loss
 
         min_op = optimizer.minimize(self.loss, var_list=[self.vars_to_optimize])
 
         for i in range(iterations):
-            if(i==100): current_lr = 2
-            elif(i<500): current_lr = 1
-            elif(i<1000): current_lr = 0.5
-            else: current_lr = 0.3
+            # if(i==100): current_lr = 1
+            # elif(i<500): current_lr = 0.5
+            # elif(i<1000): current_lr = 0.25
+            # else: current_lr = 0.1
 
-            _, l1_loss, per_loss, reg_loss, loss = self.sess.run([min_op, self.nonperceptual_loss,self.perceptual_loss, self.reg_loss, self.loss],feed_dict={learning_rate_ph: current_lr})
+            current_lr=learning_rate
+
+            _, per_loss, reg_loss, loss = self.sess.run([min_op, self.perceptual_loss, self.reg_loss, self.loss],feed_dict={learning_rate_ph: current_lr})
             
             # print(vars_to_optimize.eval())
             # print((tf.square(corrected_latent-self.gauss_mean)/self.gauss_scale).eval())
 
-            yield i,l1_loss,per_loss,reg_loss,loss
+            yield i,per_loss,reg_loss,loss
 
