@@ -34,17 +34,18 @@ URL_FFHQ = 'https://drive.google.com/uc?id=1MEGjdvVpUsu1jB4zrXZN7Y4kBBOzizDQ'  #
 
 def get_args():
     parser = argparse.ArgumentParser(description='Style-Gan Super Resolution')
-    parser.add_argument('-i', '--input_files', default="./aligned_realpics/64/keanu.png", help='Input files')
+    parser.add_argument('-i', '--input_files', help='Input files')
     parser.add_argument('-o', '--output_dir', default="generated_images/", help='Directory for storing output images and latents')
     parser.add_argument('--loss_dir', default="Loss/", help='Directory for storing loss logs')
     parser.add_argument('--n_init', default=1, help='Number of initializations for encoder', type=int)
     parser.add_argument('--img_size', default=64, help='Size to rescale to', type=int)
     parser.add_argument('--loss', default='1.0*L2', help='Loss function to use')
-    parser.add_argument('--layers', default=[3,6,9], nargs='+',help='Which VGG layers to use',type=int)
+    parser.add_argument('-LIN','--layersIN', default=[3,6,9], nargs='+',help='Which VGG-ImageNet layers to use',type=int)
+    parser.add_argument('-LF','--layersF', default=[3,6,9], nargs='+',help='Which VGG-Face layers to use',type=int)
     parser.add_argument('--lr', default=1., help='Learning rate', type=float)
     parser.add_argument('--optimizer', default='SGD', help='Which optimizer to use')
     parser.add_argument('--cosine_cycle', default=None, help='Whether to use cosine annealing',type=int)
-    parser.add_argument('--steps', default=2000, help='Number of gradient-descent steps', type=int)
+    parser.add_argument('--steps', default=1500, help='Number of gradient-descent steps', type=int)
     parser.add_argument('--mask_type', default=None, help='Whether to weight the pixels differently with a face mask')
 
     args = parser.parse_args()
@@ -135,7 +136,7 @@ def main():
                 best_losses.append(i)
                 best_idx = i
                 best_list = [x[1] for x in loss_list]
-                if(i>0.1*args.steps):
+                if(i>=0.1*args.steps):
                     generated_image = G.generate_images()
                     generated_latent = G.latent.eval()
                     best_img = PIL.Image.fromarray(generated_image[0], 'RGB')
