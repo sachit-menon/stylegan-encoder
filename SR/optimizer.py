@@ -8,6 +8,7 @@ from FaceSegmentation import FaceSegmentation
 import keras.backend as K
 from keras_vggface.vggface import VGGFace
 from bicubic_downsample import Downsampler
+import logging as log
 
 def load_image(im, img_size):
     img = image.load_img(im, target_size=(img_size, img_size))
@@ -106,7 +107,7 @@ class SROptimizer:
         self.loss = 0
 
         if(self.lambda_l1 is not None):
-            print("\t Building L1")
+            log.info(" > Building L1")
             self.ref_image = tf.get_variable('ref_img', shape=(self.n_init,self.img_size,self.img_size,3),
                                                 dtype='float32', initializer=tf.initializers.zeros())
             self.loss_l1 = 20.0*tf.reduce_mean(tf.abs(self.ref_image/255. - masked_image/255.))
@@ -115,7 +116,7 @@ class SROptimizer:
             self.loss_list[0].append("L1")
             self.loss_list[1].append(self.loss_l1)
         if(self.lambda_l2 is not None):
-            print("\t Building L2")
+            log.info(" > Building L2")
             self.ref_image = tf.get_variable('ref_img', shape=(self.n_init,self.img_size,self.img_size,3),
                                                 dtype='float32', initializer=tf.initializers.zeros())
             self.loss_l2 = 100.0*tf.reduce_mean(tf.square(self.ref_image/255. - masked_image/255.))
@@ -124,21 +125,21 @@ class SROptimizer:
             self.loss_list[0].append("L2")
             self.loss_list[1].append(self.loss_l2)
         if(self.lambda_vgg is not None):
-            print("\t Building VGG")
+            log.info(" > Building VGG")
             self.build_perceptual_loss()
 
             self.loss += self.lambda_vgg * self.loss_vgg
             self.loss_list[0].append("VGG")
             self.loss_list[1].append(self.loss_vgg)
         if(self.lambda_face is not None):
-            print("\t Building FACE")
+            log.info(" > Building FACE")
             self.build_face_loss()
 
             self.loss += self.lambda_face * self.loss_face
             self.loss_list[0].append("FACE")
             self.loss_list[1].append(self.loss_face)
         if(self.lambda_reg is not None):
-            print("\t Building REG")
+            log.info(" > Building REG")
             # corrected_latent = self.latent - 0.8*tf.nn.relu(self.latent)
             # self.loss_reg = tf.reduce_sum(tf.square((corrected_latent-self.gauss_mean)/self.gauss_scale))/512.0
             self.loss_reg = tf.reduce_sum(tf.square(self.latent))/512
@@ -147,7 +148,7 @@ class SROptimizer:
             self.loss_list[0].append("REG")
             self.loss_list[1].append(self.loss_reg)
         if(self.lambda_cross is not None):
-            print("\t Building CROSS")
+            log.info(" > Building CROSS")
             A = tf.reshape(tf.transpose(self.latent,(1,2,0)),(18,self.n_init*512))
             r = tf.reduce_sum(A*A, 1)
             r = tf.reshape(r, [-1, 1])
@@ -186,19 +187,21 @@ class SROptimizer:
 
     def build_face_loss(self):
         K.set_image_data_format('channels_last')
+        vggface_mean = np.load('vggface_mean.npy')[self.layersF]
 
         vgg_face = VGGFace(include_top=False, input_shape=(self.img_size, self.img_size, 3))
         self.face_model = Model(vgg_face.input, [vgg_face.layers[i].output for i in self.layersF])
+        print(f"Using layers {self.layersF} for face loss")
 
         preprocessed_generated_image = vggface_preprocess_input(self.generated_image,version=1)
         generated_image_features = self.face_model(preprocessed_generated_image)
         generated_image_features = generated_image_features if(isinstance(generated_image_features, list)) else [generated_image_features]
-        masked_features = [self.apply_mask(feature) for feature in generated_image_features]
+        masked_features = [self.apply_mask(feature)/mean for feature,mean in zip(generated_image_features,vggface_mean)]
         masked_features=flatcat(masked_features)
         self.ref_face_features = tf.get_variable('ref_face_features', shape=masked_features.shape,
                                                 dtype='float32', initializer=tf.initializers.zeros())
 
-        self.loss_face = tf.losses.mean_squared_error(masked_features,self.ref_face_features)/82890.0
+        self.loss_face = tf.losses.mean_squared_error(masked_features,self.ref_face_features)
 
 
     def build_mask(self,image,size,n_init):
@@ -238,10 +241,12 @@ class SROptimizer:
             self.sess.run(tf.assign(self.ref_imagenet_features, masked_ref_features))
 
         if(self.ref_face_features is not None):
+            vggface_mean = np.load('vggface_mean.npy')[self.layersF]
+
             preprocessed_image = vggface_preprocess_input(loaded_image)
             ref_features = self.face_model.predict_on_batch(preprocessed_image)
             ref_features = ref_features if(isinstance(ref_features, list)) else [ref_features]
-            masked_ref_features = [self.apply_mask(feature) for feature in ref_features]
+            masked_ref_features = [self.apply_mask(feature)/mean for feature,mean in zip(ref_features,vggface_mean)]
             masked_ref_features = flatcat(masked_ref_features)
 
             self.sess.run(tf.assign(self.ref_face_features, masked_ref_features))

@@ -1,19 +1,10 @@
-import logging
-logging.getLogger('tensorflow').disabled = True
+import logging as log
+log.getLogger('tensorflow').disabled = True
 
 import os
 from pathlib import Path
 from datetime import datetime
 import glob
-
-file_path = Path().resolve()
-print("Current Path: " + str(file_path))
-
-last_edit,last_file = max([(os.stat(filename).st_mtime,filename) for filename in Path().glob('**/*.py')])
-last_edit = datetime.fromtimestamp(last_edit)
-current_time = datetime.now()
-diff_time = current_time-last_edit
-print("Last python file (" + str(last_file) + ") was modified " + str(diff_time.total_seconds())+" seconds ago")
 
 import argparse
 import pickle
@@ -36,6 +27,7 @@ def get_args():
     parser = argparse.ArgumentParser(description='Style-Gan Super Resolution')
     parser.add_argument('-i', '--input_files', help='Input files')
     parser.add_argument('-o', '--output_dir', default="generated_images/", help='Directory for storing output images and latents')
+    parser.add_argument('-n', '--output_name', default=None, help='Name to call output file')
     parser.add_argument('--loss_dir', default="Loss/", help='Directory for storing loss logs')
     parser.add_argument('--n_init', default=1, help='Number of initializations for encoder', type=int)
     parser.add_argument('--img_size', default=64, help='Size to rescale to', type=int)
@@ -47,8 +39,11 @@ def get_args():
     parser.add_argument('--cosine_cycle', default=None, help='Whether to use cosine annealing',type=int)
     parser.add_argument('--steps', default=1500, help='Number of gradient-descent steps', type=int)
     parser.add_argument('--mask_type', default=None, help='Whether to weight the pixels differently with a face mask')
+    parser.add_argument('-v', '--verbose', dest='verbose', action='store_true', help='Whether to print things throughout')
+    parser.set_defaults(verbose=True)
 
-    args = parser.parse_args()
+    args,other_args = parser.parse_known_args()
+    if(len(other_args)>0): print(f"Did not recognize arguments: {other_args}")
     return args
 
 def plot_loss(losslist,best_losses,loss_dir):
@@ -68,6 +63,19 @@ def plot_loss(losslist,best_losses,loss_dir):
 
 def main():
     args = get_args()
+    if args.verbose:
+        log.basicConfig(format="%(levelname)s: %(message)s", level=log.DEBUG)
+        log.info("Verbose output.")
+        file_path = Path().resolve()
+        log.info("Current Path: " + str(file_path))
+
+        last_edit,last_file = max([(os.stat(filename).st_mtime,filename) for filename in Path().glob('**/*.py')])
+        last_edit = datetime.fromtimestamp(last_edit)
+        current_time = datetime.now()
+        diff_time = current_time-last_edit
+        log.info("Last python file (" + str(last_file) + ") was modified " + str(diff_time.total_seconds())+" seconds ago")
+    else:
+        log.basicConfig(format="%(levelname)s: %(message)s")
 
     ref_images = Path().glob(args.input_files)
     # ref_images = list(ref_images)
@@ -78,28 +86,35 @@ def main():
     loss_dir.mkdir(exist_ok=True)
 
     # Load StyleGAN
-    print("Loading StyleGAN")
+    log.info("Loading StyleGAN")
     tflib.init_tf()
     with dnnlib.util.open_url(URL_FFHQ, cache_dir=config.cache_dir) as f:
         generator_network, discriminator_network, Gs_network = pickle.load(f)
 
-    print("Loaded StyleGAN")
+    log.info("Loaded StyleGAN")
 
-    print("Creating Generator")
+    log.info("Creating Generator")
     G = Generator(Gs_network, args)
     G.reset_latent()
-    print("Created Generator")
-    print("Creating Optimizer")
+    log.info("Created Generator")
+    log.info("Creating Optimizer")
     opt = SROptimizer(G, args)
-    print("Created Optimizer")
-    print("Building Loss")
+    log.info("Created Optimizer")
+    log.info("Building Loss")
     opt.build_loss()
-    print("Built Loss")
+    log.info("Built Loss")
 
     losses=[]
     best_losses=[]
 
     for image in ref_images:
+        if(args.output_name is None):
+            output_name = image.stem
+            print("using stem for output")
+        else:
+            output_name = args.output_name
+            print("using -n for output")
+
         print(f"Working on {image.name}")
         opt.set_reference_image(image)
 
@@ -146,9 +161,13 @@ def main():
 
             if(i%100 == 0):
                 if(best_img is not None):
-                    best_img.save(output_dir / image.name, 'PNG')
-                    np.save(output_dir / image.stem, best_latent)
+                    best_img.save(output_dir / f'{output_name}.png', 'PNG')
+                    np.save(output_dir / f'{output_name}.npy', best_latent)
                 plot_loss(losses,best_losses,loss_dir)
+
+        best_img.save(output_dir / f'{output_name}.png', 'PNG')
+        np.save(output_dir / f'{output_name}.npy', best_latent)
+        plot_loss(losses,best_losses,loss_dir)
 
 if __name__ == "__main__":
     main()
